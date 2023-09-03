@@ -4,7 +4,7 @@ from typing import Dict
 
 from PIL import Image
 from fastapi import APIRouter, Body, UploadFile, File
-from pdf2image import convert_from_bytes
+import fitz
 
 from app.core.handler_image import resize_image
 from app.db.base.markers import add_project_full, add_markers, get_base
@@ -119,10 +119,17 @@ async def create_upload_file(
         contents = await file.read()
         # Convert PDF to Image
         if file_extension == "pdf":
-            images = convert_from_bytes(contents, first_page=page_number, last_page=page_number)
-            if len(images) == 0:
-                return f"Please Upload a PDF with more than {page_number} pages", 500
-            image = images[page_number-1]
+            # doc = fitz.open(file_path)
+            doc = fitz.open(stream=contents, filetype="pdf")
+            page = doc[page_number]
+            pix = page.get_pixmap()
+            # Modes ["1", "CMYK", "F", "HSV", "I", "L", "LAB", "P", "RGB", "RGBA", "RGBX", "YCbCr"]
+            image = Image.frombytes("RGB", [pix.width, pix.height], pix.samples)
+
+            # images = convert_from_bytes(contents, first_page=page_number, last_page=page_number)
+            # if len(images) == 0:
+            #     return f"Please Upload a PDF with more than {page_number} pages", 500
+            # image = images[page_number-1]
             file_extension = "png"
         else:
             image = Image.open(BytesIO(contents))
@@ -135,6 +142,8 @@ async def create_upload_file(
         drive = get_drive(project_id)
         filename = f"{level}-{element}.{file_extension}"
         img_bytes = BytesIO()
+        if file_extension.lower() == "jpg":
+            file_extension = "jpeg"
         image.save(img_bytes, format=file_extension)
         drive.put(filename, img_bytes.getvalue())
         # drive.put(filename, BytesIO(contents))
